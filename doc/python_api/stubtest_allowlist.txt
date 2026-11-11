@@ -1,0 +1,7 @@
+# Differences between the stubs and the runtime that stubtest is told to
+# accept, one regular expression per line, matched against the full name.
+# Stubtest fails on an entry that matches nothing, so a fix removes its own.
+
+# Exist only in the stubs, to type what the runtime does dynamically.
+ion\.types\.HooksRegistry\.__getattr__
+ion\.types\.T

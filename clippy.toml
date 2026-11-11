@@ -1,0 +1,16 @@
+# Proper nouns and technical terms that appear in doc-comment prose but are not
+# code identifiers, so `doc_markdown` must not demand back-ticks around them.
+# `..` keeps clippy's built-in defaults (GitHub, OpenGL, ...) in addition.
+doc-valid-idents = [
+    "AppImage",
+    "DnD",
+    "DoubleClick",
+    "FreeType",
+    "HiDPI",
+    "IonWL",
+    "ORed",
+    "VBlank",
+    "VBlanks",
+    "XWayland",
+    "..",
+]

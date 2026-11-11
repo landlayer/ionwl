@@ -1,0 +1,228 @@
+[package]
+name = "ionwl"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+default-run = "ionwl"
+
+[workspace]
+members = [
+    "crates/argparse",
+    "crates/recycle_vec",
+]
+
+# Every member shares the lint policy in the `[workspace.lints.*]` tables.
+[lints]
+workspace = true
+
+# Doc comments use RST (for Sphinx), not markdown - disable rust-doc doc-tests.
+[lib]
+doctest = false
+
+[[bin]]
+name = "ionwl-cmd"
+path = "src/bin/ionwl_cmd.rs"
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
+required-features = ["test_support"]
+
+[features]
+default = [
+    "xwayland",
+    "icon",
+    "icon_legacy",
+]
+xwayland = [
+    "smithay/xwayland",
+]
+test_support = []
+# Window icons a client sends over `xdg_toplevel_icon_v1`, and the tab-icon
+# plumbing every icon source draws through.
+icon = []
+# Window icons looked up by `app_id` in `.desktop` files and the hicolor theme.
+# Legacy: `xdg_toplevel_icon_v1` supersedes it.
+icon_legacy = [
+    "icon",
+    "dep:png",
+    "dep:resvg",
+]
+
+# An `#[expect]` naming a clippy lint can only be fulfilled by clippy, and rustc
+# does not check expectations for a tool lint it is not running - so `test_all`,
+# which never runs clippy, sees nothing to warn about and the hook's grep has
+# nothing to match. Denied here rather than as a `check_clippy` command-line
+# flag, which would set a `CLIPPY_ARGS` no other caller passes and so invalidate
+# the shared compile cache - see the clippy table below.
+#
+# For this to cover every `#[cfg]` arm, clippy has to be what compiles them:
+# `check_clippy` builds default features only, so `check_features` runs clippy
+# rather than `cargo check` for the combinations it owns.
+[workspace.lints.rust]
+unfulfilled_lint_expectations = "deny"
+
+# Clippy lint policy. Kept here rather than as `cargo clippy` command-line flags
+# so every clippy invocation - the commit gate, a manual `cargo clippy`, and
+# rust-analyzer - shares one identical configuration. Passing lints on the
+# command line sets a per-invocation CLIPPY_ARGS that differs between callers,
+# and any mismatch invalidates clippy's compile cache, forcing a full rebuild.
+# The groups are denied (priority -1) and the exclusions below override them.
+# rustc's own warnings are denied by `build.warnings` in `.cargo/config.toml`.
+[workspace.lints.clippy]
+# Default lint groups: correctness, style, complexity, and perf.
+all = { level = "deny", priority = -1 }
+# Opt into the stricter pedantic group.
+pedantic = { level = "deny", priority = -1 }
+# Opt into nursery (work-in-progress) lints.
+nursery = { level = "deny", priority = -1 }
+
+# Exclusions, each recording why the lint is off.
+# Names like `frame_a`/`frame_b` read clearly in context.
+similar_names = "allow"
+# Geometry math reads best with x, y, w, h.
+many_single_char_names = "allow"
+# Coordinate math does deliberate u32-to-i32 casts.
+cast_possible_wrap = "allow"
+# Fixed-point math does deliberate narrowing casts.
+cast_possible_truncation = "allow"
+# First-paragraph length is not enforced for our doc prose.
+too_long_first_doc_paragraph = "allow"
+# By-ref Copy params are kept for smithay trait signatures.
+trivially_copy_pass_by_ref = "allow"
+# Dispatch and render functions are legitimately long.
+too_many_lines = "allow"
+# Geometry does deliberate signed/unsigned casts.
+cast_sign_loss = "allow"
+# Exact float equality is used deliberately here.
+float_cmp = "allow"
+# Nursery noise: phantom flags on guard-returning accessors.
+significant_drop_tightening = "allow"
+# Prefer `as` over `::from()` in numeric-heavy code.
+# Keep: resolving requires (widen -> compute -> narrow), allow overflow instead
+#       as in practice values should be in a range which doesn't overflow.
+cast_lossless = "allow"
+# Keep: the flagged fns take sets of independent, non-exclusive flags (window
+#       state, modifier state); clippy's two-variant-enum remedy doesn't fit,
+#       and a struct or bitflags param would only bloat call sites or weaken
+#       the fixtures' tests.
+fn_params_excessive_bools = "allow"
+# Keep: `_state` fields mirror their smithay type names; `desktop_*` /
+#       `*_defaults` are public `ion.types` attribute names.
+struct_field_names = "allow"
+# Keep: these hold independent bool flags (libinput options, render/protocol
+#       state), not a state machine, so the two-variant-enum remedy doesn't fit.
+struct_excessive_bools = "allow"
+# Keep: fires on 300+ trivial fns; `const` on public fns is an API commitment
+#       for no gain, since none are actually called in const contexts.
+missing_const_for_fn = "allow"
+
+# Rustdoc lint policy, kept here for the same reason as the clippy table above:
+# a `RUSTDOCFLAGS` set only by the Makefile would differ from a bare `cargo doc`
+# and invalidate the doc cache between them. The two carve-outs are recorded at
+# their source (`lib.rs` for links into private items, `python/mod.rs` for RST
+# that rustdoc reads as markdown), so they override these levels.
+#
+# Listed individually rather than denying the `rustdoc::all` group: the group
+# also pulls in allow-by-default lints such as `private_doc_tests`, which fires
+# on every `pub(crate)` item carrying a code block.
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+private_intra_doc_links = "deny"
+invalid_codeblock_attributes = "deny"
+invalid_html_tags = "deny"
+invalid_rust_codeblocks = "deny"
+bare_urls = "deny"
+redundant_explicit_links = "deny"
+
+[dependencies]
+
+# Core.
+# Command-line argument parsing.
+argparse = { path = "crates/argparse" }
+# Vec with a shrink heuristic, for buffers reused every frame.
+recycle_vec = { path = "crates/recycle_vec" }
+# Arena-based ownership for windows, frames, work-spaces, outputs.
+# Lets the Python API reference items by ID without owning them.
+slotmap = "1.1"
+# Fast, non-poisoning RwLock for the shared render scene (matches cosmic-comp),
+# so per-output render threads can read the scene concurrently with the main loop.
+parking_lot = "0.13"
+# Logging framework, required by SMITHAY (can't switch to log without a bridge).
+tracing = "0.1"
+# Error handling for startup/init paths that propagate up to main().
+# Without it, each error site would need custom error types or string conversion boilerplate.
+anyhow = "1.0"
+
+# System (CLOCK_MONOTONIC timestamps for synthetic pointer events).
+libc = "0.2"
+
+# Input.
+xkbcommon = "0.9"
+xcursor = "0.3"
+cursor-icon = "1.2"
+
+# Text rendering.
+swash = "0.2"
+fontconfig = "0.11"
+
+# Event loop required by SMITHAY (state, UDEV backend, XWAYLAND).
+[dependencies.calloop]
+version = "0.14"
+features = [
+    "executor",
+]
+
+# Log output and RUST_LOG filtering; without it all log macros are no-ops.
+[dependencies.tracing-subscriber]
+version = "0.3"
+features = ["env-filter"]
+
+# Python.
+[dependencies.pyo3]
+version = "0.30.1"
+features = [
+    "auto-initialize",
+    "multiple-pymethods",
+]
+
+# Loading `.desktop` PNG images (icon_legacy).
+[dependencies.png]
+version = "0.18.1"
+optional = true
+
+# Rasterizing `.desktop` SVG icons (icon_legacy).
+[dependencies.resvg]
+version = "0.49"
+optional = true
+default-features = false
+
+[dependencies.smithay]
+git = "https://github.com/Smithay/smithay.git"
+rev = "d09642ccba702c772f9a4837b78c63ce7f14229d"
+default-features = false
+features = [
+    "backend_drm",
+    "backend_egl",
+    "backend_gbm",
+    "backend_libinput",
+    "backend_udev",
+    "backend_session_libseat",
+    "backend_winit",
+    "desktop",
+    "renderer_glow",
+    "renderer_multi",
+    "wayland_frontend",
+]
+
+[dependencies.smithay-drm-extras]
+git = "https://github.com/Smithay/smithay.git"
+rev = "d09642ccba702c772f9a4837b78c63ce7f14229d"
+
+[dev-dependencies]
+proptest = "1.12"
+wayland-client = "0.31"
+# Integration test client event loop.
+calloop-wayland-source = "0.4"
+tempfile = "3"
+

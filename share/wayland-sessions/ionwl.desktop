@@ -1,0 +1,5 @@
+[Desktop Entry]
+Name=IonWL
+Comment=A manual tiling Wayland compositor
+Exec=ionwl
+Type=Application
